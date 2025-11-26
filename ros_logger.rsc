@@ -75,9 +75,13 @@
    }
 }
 
-:local getCommentDhcpLease  do={
+:local getCommentDhcpLease do={
   :local mac [:pick $message 0 17]
-  :return [/ip dhcp-server lease get [find mac-address=$mac] comment ]
+  :do {
+    :return [/ip dhcp-server lease get [find mac-address=$mac] comment ] 
+  } on-error={
+    :return ""
+  }
 }
 
 # log message
