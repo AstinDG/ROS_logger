@@ -16,6 +16,27 @@
 # END SETUP
 
 
+# Replaces all space characters in a string with "%20" (URL encoding).
+#   str - the input string to encode
+#   returns new string with every space replaced by "%20"
+# Example:
+#   [$replaceSpaces str="hello world"] --> "hello%20world"
+:local replaceSpaces do={
+    :local result ""
+    :local len [:len $str]
+    :local i 0
+    :while ($i < $len) do={
+        :local char [:pick $str $i ($i + 1)]
+        :if ($char = " ") do={
+            :set result ($result."%20")
+        } else={
+            :set result ($result.$char)
+        }
+        :set i ($i + 1)
+    }
+    :return $result
+}
+
 # check internet access
 :if ([/ping 1.1.1.1 count=1] < 1 || [/ping 8.8.8.8 count=1] < 1) do={
   /log error "[TLG] no internet access"
@@ -40,7 +61,7 @@
 :local interval ([/system scheduler get [find name="$scheduleName"] interval] + [:totime "00:01:00"])
 :if ($uptime < $interval) do={
   :local model [/system routerboard get board-name]
-  :local rebootText ("%E2%9A%a0%EF%B8%8F MikroTik ".$model." rebooted %E2%9A%a0%EF%B8%8F %0A%0Auptime: ".$uptime)
+  :local rebootText ("%E2%9A%a0%EF%B8%8F%20MikroTik%20".$model."%20rebooted%20%E2%9A%a0%EF%B8%8F%20%0A%0Auptime:%20".$uptime)
   :local url ("https://api.telegram.org/bot".$botToken."/sendMessage\?chat_id=".$chatId."&text=".$rebootText)
   /tool fetch url="$url" dst-path=telegramLog.txt;
 }
@@ -77,9 +98,11 @@
 
 :local getCommentDhcpLease do={
   :local mac [:pick $message 0 17]
-  :do {
-    :return [/ip dhcp-server lease get [find mac-address=$mac] comment ] 
-  } on-error={
+  :local leaseId [/ip dhcp-server lease find mac-address=$mac]
+  
+  :if ([:len $leaseId] > 0) do={
+    :return [/ip dhcp-server lease get $leaseId comment]
+  } else={
     :return ""
   }
 }
@@ -100,14 +123,12 @@ local counter
 
   :if $keepOutput do {
     :local keepLog true
-
     :foreach ignore in=$ignoreMessages do={
     #   if this log entry contains any of them, it will be ignored
       :if ([/log get $log message] ~ "$ignore") do={
         :set keepLog false
       }
     }
-
     :if $keepLog do={
       :set message [/log get $log message]
       :if ($message ~ $wifiKeyword) do={
@@ -124,16 +145,14 @@ local counter
           :set resolvedMessage true
         }
       }
-
       #   if keepOutput is true, add this log entry to output      
       :if $resolvedMessage do={
-        :set output ($output."%E2%9C%85 OK %E2%9C%85 %0ATIME: ".$currentTime."%0AMESSAGE: ".$message."%0A%0A")
+        :set output ($output."%E2%9C%85%20OK%20%E2%9C%85%20%0ATIME:%20".$currentTime."%0AMESSAGE:%20".$message."%0A%0A")
       } else={
-        :set output ($output."%F0%9F%98%B1 WARNING %F0%9F%98%B1 %0ATIME: ".$currentTime."%0AMESSAGE: ".$message."%0A%0A")
+        :set output ($output."%F0%9F%98%B1%20WARNING%20%F0%9F%98%B1%20%0ATIME:%20".$currentTime."%0AMESSAGE:%20".$message."%0A%0A")
       }
     }
   }
-
   :if ($currentTime = $lastRunTime) do={
      :set keepOutput true
      :set output ""
@@ -153,11 +172,12 @@ local counter
   set counter ($counter + 1)
   
 }
-
 # send to telegram and save current time
 if ([:len $output] > 0) do={
   /system scheduler set [find name="$scheduleName"] comment=$currentTime
   :local url ("https://api.telegram.org/bot".$botToken."/sendMessage\?chat_id=".$chatId."&text=".$output)
+  :set $url [$replaceSpaces str=$url]
+  #:put $url
   /tool fetch url="$url" dst-path=telegramLog.txt;
   /log info "[LOG-TLG] New logs found, send Telegram"
 }
